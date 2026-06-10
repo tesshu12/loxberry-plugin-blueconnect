@@ -1,5 +1,5 @@
 #!/bin/bash
-# BlueConnect - LoxBerry cron job
+# BlueConnect - LoxBerry cron job (installed to system/cron/cron.05min/<NAME>)
 # Runs every 5 minutes but only actually polls when the configured
 # interval (seconds) has elapsed since the last successful run.
 # REPLACE* placeholders are substituted by LoxBerry at install time.
