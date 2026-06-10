@@ -228,9 +228,9 @@ class BlueRiiotClient:
 def discover_and_verify_device(
     client: BlueRiiotClient,
     cfg: configparser.ConfigParser,
-) -> tuple[str, str, str, bool]:
+) -> tuple[str, str, str, dict, bool]:
     """
-    Gibt (pool_id, pool_name, blue_serial, config_changed) zurück.
+    Gibt (pool_id, pool_name, blue_serial, device, config_changed) zurück.
     Prüft bei jedem Lauf ob das gekoppelte Gerät noch stimmt.
     """
     stored_pool_id   = cfg.get("blueconnect", "pool_id",     fallback="").strip()
@@ -272,13 +272,31 @@ def discover_and_verify_device(
         cfg.set("blueconnect", "pool_name",   stored_pool_name)
         cfg.set("blueconnect", "blue_serial", stored_serial)
 
-    return stored_pool_id, stored_pool_name, stored_serial, changed
+    return stored_pool_id, stored_pool_name, stored_serial, devices[0], changed
 
 
 # ── Werte extrahieren ─────────────────────────────────────────────────────────
 
-def extract_values(measurements: list[dict], weather: dict) -> dict:
+def _as_number(val):
+    """Return val as float if it is numeric (incl. numeric strings), else None."""
+    if isinstance(val, bool):
+        return None
+    if isinstance(val, (int, float)):
+        return float(val)
+    if isinstance(val, str):
+        try:
+            return float(val.strip().replace("%", ""))
+        except ValueError:
+            return None
+    return None
+
+
+def extract_values(measurements: list[dict], weather: dict, device: dict | None = None) -> dict:
     values: dict = {}
+
+    # Diagnostic: log what the API actually returns so missing values can be traced.
+    log.info("Measurements (name, issuer, value): %s",
+             [(m.get("name"), m.get("issuer"), m.get("value")) for m in measurements])
 
     for m in measurements:
         if m.get("issuer") not in ("blue", "sigfox"):
@@ -291,6 +309,30 @@ def extract_values(measurements: list[dict], weather: dict) -> dict:
                 values[f"{name}_ok_min"] = m["ok_min"]
             if m.get("ok_max") is not None:
                 values[f"{name}_ok_max"] = m["ok_max"]
+
+    # ── Battery ──────────────────────────────────────────────────────────────
+    # Battery is often not a sigfox/blue measurement. Search more broadly:
+    # (a) any measurement whose name mentions "batt" (any issuer),
+    # (b) any field in the Blue device object whose name mentions "batt".
+    if "battery" not in values:
+        for m in measurements:
+            nm = (m.get("name") or "").lower()
+            if "batt" in nm:
+                num = _as_number(m.get("value"))
+                if num is not None:
+                    values["battery"] = round(num, 3)
+                    log.info("Battery taken from measurement '%s'", m.get("name"))
+                    break
+
+    if "battery" not in values and device:
+        log.info("Blue device fields: %s", sorted(device.keys()))
+        for k, v in device.items():
+            if "batt" in k.lower():
+                num = _as_number(v)
+                if num is not None:
+                    values["battery"] = round(num, 3)
+                    log.info("Battery taken from device field '%s'", k)
+                    break
 
     if weather:
         for key in ("temperature_current", "temperature_min", "temperature_max",
@@ -376,7 +418,7 @@ def main() -> int:
 
     client = BlueRiiotClient(username, password)
     try:
-        pool_id, pool_name, blue_serial, dev_changed = discover_and_verify_device(
+        pool_id, pool_name, blue_serial, device, dev_changed = discover_and_verify_device(
             client, cfg
         )
 
@@ -389,7 +431,7 @@ def main() -> int:
 
         measurements = client.get_last_measurements(pool_id, blue_serial)
         weather      = client.get_weather(pool_id)
-        values       = extract_values(measurements, weather)
+        values       = extract_values(measurements, weather, device)
 
         cache_data = {
             "pool":        pool_name,
