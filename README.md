@@ -64,6 +64,30 @@ In **Loxone Config**:
 The Miniserver IP is taken from LoxBerry's system settings (**Settings → Miniserver**) — no manual
 entry needed.
 
+## Automatic updates
+
+The plugin supports LoxBerry's built-in auto-update. In `plugin.cfg` the `[AUTOUPDATE]` section
+points `RELEASECFG` to [`release.cfg`](release.cfg) in this repository. LoxBerry periodically reads
+that file and, when its `VERSION` is newer than the installed one, downloads the archive from
+`ARCHIVEURL` and installs it automatically.
+
+Enable it in LoxBerry under the plugin's update settings (or it runs automatically because
+`AUTOMATIC_UPDATES=1`).
+
+### Cutting a new release
+
+1. Bump `VERSION` in **both** `plugin.cfg` (`[PLUGIN] VERSION`) and `release.cfg`.
+2. Point `ARCHIVEURL` in `release.cfg` at the new tag archive
+   (`.../archive/refs/tags/vX.Y.Z.zip`).
+3. Commit and push to `main`.
+4. Create and push a matching git tag:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+   GitHub serves the tag's source archive automatically — that is what LoxBerry downloads.
+5. (Optional) Draft a GitHub Release from the tag for human-readable notes.
+
 ## Building a plugin ZIP
 
 The archive must use forward-slash paths and have `plugin.cfg` at the root. On Windows
