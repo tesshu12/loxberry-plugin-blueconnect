@@ -14,12 +14,12 @@ my $cgi = CGI->new;
 
 # ── Paths ───────────────────────────────────────────────────────────────────────
 # LoxBerry sets LBPLUGINDIR to the plugin's config dir (config/plugins/<name>)
-my $plugin_dir   = $ENV{LBPLUGINDIR} // "/opt/loxberry/config/plugins/blueriiot";
-my $config_file  = "$plugin_dir/../../../config/plugins/blueriiot/pool.cfg";
+my $plugin_dir   = $ENV{LBPLUGINDIR} // "/opt/loxberry/config/plugins/blueconnect";
+my $config_file  = "$plugin_dir/../../../config/plugins/blueconnect/pool.cfg";
 my $general_file = "$plugin_dir/../../../config/system/general.json";
-my $cache_file   = "/tmp/blueriiot_pool.json";
-my $log_file     = "$plugin_dir/../../../data/plugins/blueriiot/blueriiot.log";
-my $script       = "$plugin_dir/../../../bin/plugins/blueriiot/fetch_pool.py";
+my $cache_file   = "/tmp/blueconnect_pool.json";
+my $log_file     = "$plugin_dir/../../../data/plugins/blueconnect/blueconnect.log";
+my $script       = "$plugin_dir/../../../bin/plugins/blueconnect/fetch_pool.py";
 
 # ── Read Miniserver from LoxBerry system settings ────────────────────────────────
 sub get_miniserver {
@@ -44,21 +44,21 @@ if ($action eq 'save') {
 
     my $new_user = $cgi->param('username') // '';
     my $new_pass = $cgi->param('password') // '';
-    my $old_user = $cfg->param("blueriiot.username") // '';
+    my $old_user = $cfg->param("blueconnect.username") // '';
 
-    $cfg->param("blueriiot.username", $new_user);
+    $cfg->param("blueconnect.username", $new_user);
 
     if ($new_pass ne '') {
         # Store plaintext in password_plain - Python encrypts it on next run
-        $cfg->param("blueriiot.password_plain", $new_pass);
-        $cfg->param("blueriiot.password_enc",   '');
+        $cfg->param("blueconnect.password_plain", $new_pass);
+        $cfg->param("blueconnect.password_enc",   '');
     }
 
     # On user/password change: clear cached device data -> re-detection
     if ($new_user ne $old_user || $new_pass ne '') {
-        $cfg->param("blueriiot.pool_id",     '');
-        $cfg->param("blueriiot.pool_name",   '');
-        $cfg->param("blueriiot.blue_serial", '');
+        $cfg->param("blueconnect.pool_id",     '');
+        $cfg->param("blueconnect.pool_name",   '');
+        $cfg->param("blueconnect.blue_serial", '');
     }
 
     $cfg->param("loxone.miniserver_port", $cgi->param('ms_port')  // '7777');
@@ -92,11 +92,11 @@ $active = $tabparam if $tabparam =~ /^(data|config|log)$/;
 my $cfg = Config::Simple->new(syntax => 'ini');
 $cfg->read($config_file) if -f $config_file;
 
-my $username    = $cfg->param("blueriiot.username")       // '';
-my $pool_name   = $cfg->param("blueriiot.pool_name")      // '';
-my $blue_serial = $cfg->param("blueriiot.blue_serial")    // '';
-my $pw_enc      = $cfg->param("blueriiot.password_enc")   // '';
-my $pw_plain    = $cfg->param("blueriiot.password_plain") // '';
+my $username    = $cfg->param("blueconnect.username")       // '';
+my $pool_name   = $cfg->param("blueconnect.pool_name")      // '';
+my $blue_serial = $cfg->param("blueconnect.blue_serial")    // '';
+my $pw_enc      = $cfg->param("blueconnect.password_enc")   // '';
+my $pw_plain    = $cfg->param("blueconnect.password_plain") // '';
 my $pw_status   = $pw_enc   ? 'Encrypted and stored'
                 : $pw_plain ? 'Pending encryption (run a fetch once)'
                 :             'Not set';

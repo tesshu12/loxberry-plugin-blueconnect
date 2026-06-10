@@ -71,7 +71,7 @@ The archive must use forward-slash paths and have `plugin.cfg` at the root. On W
 
 ```powershell
 $proj = "."
-$out  = "blueriiot.zip"
+$out  = "blueconnect.zip"
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $zip = [System.IO.Compression.ZipFile]::Open($out, 'Create')
 Get-ChildItem $proj -Recurse -File |
@@ -83,14 +83,14 @@ Get-ChildItem $proj -Recurse -File |
 $zip.Dispose()
 ```
 
-On Linux/macOS a plain `zip -r blueriiot.zip . -x '*.git*' 'data/*' '*.zip'` works.
+On Linux/macOS a plain `zip -r blueconnect.zip . -x '*.git*' 'data/*' '*.zip'` works.
 
 ## Project layout
 
 ```
 plugin.cfg                       LoxBerry plugin metadata
 dpkg/apt                         apt packages installed on setup
-cron/cron.05min/blueriiot        polling job (honours configured interval)
+cron/cron.05min/blueconnect        polling job (honours configured interval)
 bin/fetch_pool.py                main fetcher (API, encryption, UDP)
 config/pool.cfg                  config template (no credentials committed)
 webfrontend/htmlauth/index.cgi   tabbed web UI

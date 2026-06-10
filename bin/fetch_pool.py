@@ -21,7 +21,7 @@ from cryptography.fernet import Fernet
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
 SCRIPT_DIR  = Path(__file__).resolve().parent
-PLUGIN_NAME = SCRIPT_DIR.name  # e.g. "blueriiot"
+PLUGIN_NAME = SCRIPT_DIR.name  # e.g. "blueconnect"
 
 def _plugin_dir(envvar, subtree):
     """Resolve a LoxBerry plugin directory.
@@ -45,7 +45,7 @@ CONFIG_DIR  = _plugin_dir("LBPCONFIGDIR", "config")
 DATA_DIR    = _plugin_dir("LBPDATADIR",   "data")
 CONFIG_FILE = CONFIG_DIR / "pool.cfg"
 KEY_FILE    = CONFIG_DIR / ".secret_key"
-LOG_FILE    = DATA_DIR   / "blueriiot.log"
+LOG_FILE    = DATA_DIR   / "blueconnect.log"
 
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -94,15 +94,15 @@ def resolve_password(cfg: configparser.ConfigParser) -> tuple[str, bool]:
     Wenn password_plain vorhanden: verschlüsseln, plain löschen → config_changed=True.
     Sonst password_enc entschlüsseln.
     """
-    plain = cfg.get("blueriiot", "password_plain", fallback="").strip()
+    plain = cfg.get("blueconnect", "password_plain", fallback="").strip()
     if plain:
         enc = encrypt_password(plain)
-        cfg.set("blueriiot", "password_enc",   enc)
-        cfg.set("blueriiot", "password_plain", "")
+        cfg.set("blueconnect", "password_enc",   enc)
+        cfg.set("blueconnect", "password_plain", "")
         log.info("Password encrypted and stored.")
         return plain, True
 
-    enc = cfg.get("blueriiot", "password_enc", fallback="").strip()
+    enc = cfg.get("blueconnect", "password_enc", fallback="").strip()
     if enc:
         try:
             return decrypt_password(enc), False
@@ -233,9 +233,9 @@ def discover_and_verify_device(
     Gibt (pool_id, pool_name, blue_serial, config_changed) zurück.
     Prüft bei jedem Lauf ob das gekoppelte Gerät noch stimmt.
     """
-    stored_pool_id   = cfg.get("blueriiot", "pool_id",     fallback="").strip()
-    stored_pool_name = cfg.get("blueriiot", "pool_name",   fallback="").strip()
-    stored_serial    = cfg.get("blueriiot", "blue_serial", fallback="").strip()
+    stored_pool_id   = cfg.get("blueconnect", "pool_id",     fallback="").strip()
+    stored_pool_name = cfg.get("blueconnect", "pool_name",   fallback="").strip()
+    stored_serial    = cfg.get("blueconnect", "blue_serial", fallback="").strip()
     changed          = False
 
     # Pool-ID holen (wird gecacht, ändert sich normalerweise nicht)
@@ -268,9 +268,9 @@ def discover_and_verify_device(
         changed       = True
 
     if changed:
-        cfg.set("blueriiot", "pool_id",     stored_pool_id)
-        cfg.set("blueriiot", "pool_name",   stored_pool_name)
-        cfg.set("blueriiot", "blue_serial", stored_serial)
+        cfg.set("blueconnect", "pool_id",     stored_pool_id)
+        cfg.set("blueconnect", "pool_name",   stored_pool_name)
+        cfg.set("blueconnect", "blue_serial", stored_serial)
 
     return stored_pool_id, stored_pool_name, stored_serial, changed
 
@@ -361,7 +361,7 @@ def main() -> int:
         log.error("Config not found: %s", CONFIG_FILE)
         return 1
 
-    username = cfg.get("blueriiot", "username", fallback="").strip()
+    username = cfg.get("blueconnect", "username", fallback="").strip()
     password, pw_changed = resolve_password(cfg)
 
     if not username or not password:
@@ -372,7 +372,7 @@ def main() -> int:
     ms_nr   = cfg.get("loxone", "miniserver_nr",   fallback="").strip()
     ms_port = cfg.getint("loxone", "miniserver_port", fallback=7777)
     ms_ip, ms_name = get_miniserver_ip(ms_nr)
-    cache   = Path(cfg.get("data", "cache_file",   fallback="/tmp/blueriiot_pool.json"))
+    cache   = Path(cfg.get("data", "cache_file",   fallback="/tmp/blueconnect_pool.json"))
 
     client = BlueRiiotClient(username, password)
     try:
