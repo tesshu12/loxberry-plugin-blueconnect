@@ -1,0 +1,19 @@
+#!/bin/bash
+# Blue Riiot Pool Monitor - LoxBerry cron job
+# Runs every 5 minutes but only actually polls when the configured
+# interval (seconds) has elapsed since the last successful run.
+# REPLACE* placeholders are substituted by LoxBerry at install time.
+
+SCRIPT="REPLACELBPBINDIR/fetch_pool.py"
+CONFIG="REPLACELBPCONFIGDIR/pool.cfg"
+STAMP="REPLACELBPDATADIR/.last_run"
+
+INTERVAL=$(grep -Po '(?<=interval=)\d+' "$CONFIG" 2>/dev/null || echo 300)
+NOW=$(date +%s)
+LAST=0
+[ -f "$STAMP" ] && LAST=$(cat "$STAMP" 2>/dev/null || echo 0)
+
+if [ $((NOW - LAST)) -ge "$INTERVAL" ]; then
+    python3 "$SCRIPT" >/dev/null 2>&1
+    echo "$NOW" > "$STAMP"
+fi

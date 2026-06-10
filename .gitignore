@@ -1,0 +1,15 @@
+# Runtime data - never commit secrets or logs
+data/
+config/.secret_key
+*.log
+
+# Local credentials (the committed config/pool.cfg is the empty template)
+**/pool.cfg.local
+
+# Build artifacts
+*.zip
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp

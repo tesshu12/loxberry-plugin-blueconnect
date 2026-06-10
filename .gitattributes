@@ -1,0 +1,13 @@
+# LoxBerry runs on Linux - keep LF endings for all text/scripts.
+* text=auto eol=lf
+
+# Treat icons as binary
+*.png binary
+
+# Explicitly LF for executable scripts and configs
+*.py            text eol=lf
+*.cgi           text eol=lf
+*.sh            text eol=lf
+*.cfg           text eol=lf
+dpkg/apt        text eol=lf
+cron/**         text eol=lf
