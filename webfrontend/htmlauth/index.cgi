@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-# Blue Riiot Pool Monitor - configuration frontend for LoxBerry
+# BlueConnect - configuration frontend for LoxBerry
 use strict;
 use warnings;
 use CGI;
@@ -183,7 +183,7 @@ print <<'HTMLHEAD';
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Blue Riiot Pool Monitor</title>
+  <title>BlueConnect</title>
   <link rel="stylesheet" href="/system/htmlauth/css/loxberry.min.css">
   <style>
     body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:16px}
@@ -241,7 +241,7 @@ print <<'HTMLHEAD';
 <div class="topbar">
   <a href="/admin/index.cgi" class="btn btn-sec">&larr; Back</a>
 </div>
-<h2>Blue Riiot Pool Monitor</h2>
+<h2>BlueConnect</h2>
 HTMLHEAD
 
 if ($message) {

@@ -1,4 +1,4 @@
-# Blue Riiot Pool Monitor — LoxBerry Plugin
+# BlueConnect — LoxBerry Plugin
 
 A [LoxBerry](https://www.loxberry.de/) plugin that reads your **Blue Riiot / Blue Connect** pool
 sensor data from the Blue Riiot cloud and forwards the live values (pH, water temperature, ORP,

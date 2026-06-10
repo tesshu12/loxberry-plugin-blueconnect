@@ -1,5 +1,5 @@
 #!/bin/bash
-# Blue Riiot Pool Monitor - LoxBerry cron job
+# BlueConnect - LoxBerry cron job
 # Runs every 5 minutes but only actually polls when the configured
 # interval (seconds) has elapsed since the last successful run.
 # REPLACE* placeholders are substituted by LoxBerry at install time.
