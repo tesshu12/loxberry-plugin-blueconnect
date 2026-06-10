@@ -294,9 +294,9 @@ def _as_number(val):
 def extract_values(measurements: list[dict], weather: dict, device: dict | None = None) -> dict:
     values: dict = {}
 
-    # Diagnostic: log what the API actually returns so missing values can be traced.
-    log.info("Measurements (name, issuer, value): %s",
-             [(m.get("name"), m.get("issuer"), m.get("value")) for m in measurements])
+    # Diagnostic (debug only): the raw measurements / device fields.
+    log.debug("Measurements (name, issuer, value): %s",
+              [(m.get("name"), m.get("issuer"), m.get("value")) for m in measurements])
 
     for m in measurements:
         if m.get("issuer") not in ("blue", "sigfox"):
@@ -311,28 +311,40 @@ def extract_values(measurements: list[dict], weather: dict, device: dict | None 
                 values[f"{name}_ok_max"] = m["ok_max"]
 
     # ── Battery ──────────────────────────────────────────────────────────────
-    # Battery is often not a sigfox/blue measurement. Search more broadly:
-    # (a) any measurement whose name mentions "batt" (any issuer),
-    # (b) any field in the Blue device object whose name mentions "batt".
+    # The Blue device object carries the battery info. Most devices (e.g. Blue
+    # Connect Go) only expose a boolean "battery_low" flag, not a percentage.
+    # We therefore:
+    #   1. look for a numeric battery value (measurement or device field), and
+    #   2. always expose battery_low as 0/1 when the flag is present.
+    nested = {}
+    if device:
+        log.debug("Blue device fields: %s", sorted(device.keys()))
+        nd = device.get("blue_device")
+        if isinstance(nd, dict):
+            log.debug("blue_device content: %s", nd)
+            nested = nd
+
+    # 1) numeric battery, if the device happens to report one
     if "battery" not in values:
         for m in measurements:
-            nm = (m.get("name") or "").lower()
-            if "batt" in nm:
+            if "batt" in (m.get("name") or "").lower():
                 num = _as_number(m.get("value"))
                 if num is not None:
                     values["battery"] = round(num, 3)
-                    log.info("Battery taken from measurement '%s'", m.get("name"))
                     break
-
     if "battery" not in values and device:
-        log.info("Blue device fields: %s", sorted(device.keys()))
-        for k, v in device.items():
-            if "batt" in k.lower():
+        for k, v in {**device, **nested}.items():
+            if "bat" in k.lower():
                 num = _as_number(v)
                 if num is not None:
                     values["battery"] = round(num, 3)
-                    log.info("Battery taken from device field '%s'", k)
+                    log.info("Battery level from device field '%s'", k)
                     break
+
+    # 2) low-battery flag as 0/1 (0 = OK, 1 = low / replace soon)
+    flag_source = nested if "battery_low" in nested else (device or {})
+    if "battery_low" in flag_source:
+        values["battery_low"] = 1 if flag_source["battery_low"] else 0
 
     if weather:
         for key in ("temperature_current", "temperature_min", "temperature_max",

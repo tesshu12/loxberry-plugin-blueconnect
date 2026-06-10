@@ -145,6 +145,7 @@ my %labels = (
     tds                 => 'TDS',
     fcl                 => 'Free chlorine',
     battery             => 'Battery',
+    battery_low         => 'Battery',
     temperature_current => 'Air temperature',
     temperature_max     => 'Air temp. max.',
     temperature_min     => 'Air temp. min.',
@@ -152,7 +153,7 @@ my %labels = (
 );
 
 my @device_keys  = grep { exists $values->{$_} && $_ !~ /ok_min|ok_max|last_update/ }
-                   qw(temperature ph orp tds fcl battery);
+                   qw(temperature ph orp tds fcl battery battery_low);
 my @weather_keys = grep { exists $values->{$_} }
                    qw(temperature_current temperature_max temperature_min wind_speed_current);
 
@@ -161,6 +162,18 @@ sub value_row {
     my $val   = $values->{$key};
     return '' unless defined $val;
     my $label  = $labels{$key} // do { (my $l = $key) =~ s/_/ /g; ucfirst $l };
+
+    # Battery is only available as a low-battery flag (0 = OK, 1 = low).
+    if ($key eq 'battery_low') {
+        my $low    = $val ? 1 : 0;
+        my $text   = $low ? 'Low' : 'OK';
+        my $status = $low ? ' status-warn' : ' status-ok';
+        return "<div class='value-card$status'>"
+             . "<span class='vlabel'>$label</span>"
+             . "<span class='vval'>$text</span>"
+             . "</div>\n";
+    }
+
     my $unit   = $units{$key}  // '';
     my $ok_min = $values->{"${key}_ok_min"};
     my $ok_max = $values->{"${key}_ok_max"};

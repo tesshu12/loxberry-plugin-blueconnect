@@ -39,19 +39,24 @@ UDP port (default `7777`).
 In **Loxone Config**:
 
 1. Add a **Virtual UDP Input** and set its UDP receive port to the same value (e.g. `7777`).
-2. For each value add a **Virtual UDP Input Command** with a *command recognition* string:
+2. For each value add a **Virtual UDP Input Command**. Set its *command
+   recognition* and, optionally, the *unit* (Einheit) for a nicely formatted
+   display in Loxone (`\v` is the value placeholder):
 
-   | Value             | Command recognition          |
-   |-------------------|------------------------------|
-   | Water temperature | `temperature=\v`             |
-   | pH                | `ph=\v`                      |
-   | ORP (Redox)       | `orp=\v`                     |
-   | Free chlorine     | `fcl=\v`                     |
-   | TDS               | `tds=\v`                     |
-   | Battery           | `battery=\v`                 |
-   | Air temperature   | `temperature_current=\v`     |
+   | Value             | Command recognition          | Unit (Einheit) |
+   |-------------------|------------------------------|----------------|
+   | Water temperature | `temperature=\v`             | `<v.1>°C`      |
+   | pH                | `ph=\v`                      | `<v.1>`        |
+   | ORP (Redox)       | `orp=\v`                     | `<v> mV`       |
+   | Free chlorine     | `fcl=\v`                     | `<v.1> mg/l`   |
+   | TDS               | `tds=\v`                     | `<v> ppm`      |
+   | Battery low flag  | `battery_low=\v`             | `<v>`          |
+   | Air temperature   | `temperature_current=\v`     | `<v.1>°C`      |
 
-   Only values your device actually reports are sent.
+   Only values your device actually reports are sent. Most Blue devices expose
+   the battery only as a low-battery flag — `battery_low`: `0` = **OK**,
+   `1` = **Low** — not as a percentage. Tip: in Loxone you can map the
+   `battery_low` input to a status text "OK"/"Low" via its unit/caption.
 
 ## Configuration
 
