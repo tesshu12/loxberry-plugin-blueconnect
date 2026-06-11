@@ -48,14 +48,19 @@ In **Loxone Config**:
    | Water temperature | `temperature=\v`             | `<v.1>°C`      |
    | pH                | `ph=\v`                      | `<v.1>`        |
    | ORP (Redox)       | `orp=\v`                     | `<v> mV`       |
-   | Free chlorine     | `fcl=\v`                     | `<v.1> mg/l`   |
-   | TDS               | `tds=\v`                     | `<v> ppm`      |
    | Battery low flag  | `battery_low=\v`             | `<v>`          |
    | Air temperature   | `temperature_current=\v`     | `<v.1>°C`      |
 
-   Only values your device actually reports are sent. Most Blue devices expose
-   the battery only as a low-battery flag — `battery_low`: `0` = **OK**,
-   `1` = **Low** — not as a percentage. Tip: in Loxone you can map the
+   Only values your device actually reports are sent. The Blue Connect device
+   measures **pH, water temperature and ORP (Redox)** — it does **not** measure
+   free chlorine or TDS. (ORP/Redox reflects the disinfection power; there is no
+   direct mg/l chlorine reading on this device.) Values like free chlorine only
+   exist if you enter **test strips** in the Blue Riiot app, and those manual
+   strip entries are intentionally filtered out — only live device readings are
+   forwarded.
+
+   The battery is exposed only as a low-battery flag — `battery_low`: `0` =
+   **OK**, `1` = **Low** — not as a percentage. Tip: in Loxone you can map the
    `battery_low` input to a status text "OK"/"Low" via its unit/caption.
 
 ## Configuration
