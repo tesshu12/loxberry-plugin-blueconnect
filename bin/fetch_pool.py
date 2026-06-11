@@ -294,21 +294,32 @@ def _as_number(val):
 def extract_values(measurements: list[dict], weather: dict, device: dict | None = None) -> dict:
     values: dict = {}
 
-    # Diagnostic (debug only): the raw measurements / device fields.
+    # Diagnostic (debug only): the raw measurements so sources can be traced.
     log.debug("Measurements (name, issuer, value): %s",
               [(m.get("name"), m.get("issuer"), m.get("value")) for m in measurements])
 
+    # Forward every device source (sigfox over the air, blue/ble via Bluetooth
+    # sync, etc.) but NOT manual test strips. When the same value exists from
+    # several sources, keep the highest-priority one (live Sigfox > Bluetooth).
+    issuer_priority = {"sigfox": 3, "blue": 2, "ble": 1}
+    seen_priority: dict = {}
     for m in measurements:
-        if m.get("issuer") not in ("blue", "sigfox"):
-            continue  # nur Gerätewerte, keine Teststreifen
-        name = m.get("name", "").lower()
+        issuer = (m.get("issuer") or "").lower()
+        if issuer == "strip":
+            continue  # manual test-strip entry, not a live device reading
+        name = (m.get("name") or "").lower()
         val  = m.get("value")
-        if name and val is not None:
-            values[name] = round(float(val), 3)
-            if m.get("ok_min") is not None:
-                values[f"{name}_ok_min"] = m["ok_min"]
-            if m.get("ok_max") is not None:
-                values[f"{name}_ok_max"] = m["ok_max"]
+        if not name or val is None:
+            continue
+        prio = issuer_priority.get(issuer, 0)
+        if name in seen_priority and seen_priority[name] >= prio:
+            continue
+        seen_priority[name] = prio
+        values[name] = round(float(val), 3)
+        if m.get("ok_min") is not None:
+            values[f"{name}_ok_min"] = m["ok_min"]
+        if m.get("ok_max") is not None:
+            values[f"{name}_ok_max"] = m["ok_max"]
 
     # ── Battery ──────────────────────────────────────────────────────────────
     # The Blue device object carries the battery info. Most devices (e.g. Blue
