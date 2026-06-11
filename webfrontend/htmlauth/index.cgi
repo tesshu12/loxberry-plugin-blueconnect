@@ -1,27 +1,33 @@
 #!/usr/bin/perl
 # BlueConnect - configuration frontend for LoxBerry
+# Uses the native LoxBerry frame (LoxBerry::Web lbheader/lbfooter + %navbar tabs).
+# Bilingual (DE/EN); default language = LoxBerry system language, user-switchable.
+
 use strict;
 use warnings;
 use CGI;
-use CGI::Carp qw(fatalsToBrowser);
+use LoxBerry::System;          # path globals ($lbpconfigdir, ...) + helpers
+use LoxBerry::Web;             # lbheader(), lbfooter()
 use Config::Simple;
 use JSON;
 use File::Slurp;
 use POSIX qw(strftime);
-use Encode qw(decode_utf8);
 
-my $cgi = CGI->new;
+my $cgi     = CGI->new;
+my $version = LoxBerry::System::pluginversion();
 
-# ── Paths ───────────────────────────────────────────────────────────────────────
-# LoxBerry sets LBPLUGINDIR to the plugin's config dir (config/plugins/<name>)
-my $plugin_dir   = $ENV{LBPLUGINDIR} // "/opt/loxberry/config/plugins/blueconnect";
-my $config_file  = "$plugin_dir/../../../config/plugins/blueconnect/pool.cfg";
-my $general_file = "$plugin_dir/../../../config/system/general.json";
+our $LANG = 'en';
+sub lng { return $LANG eq 'de' ? $_[0] : $_[1]; }   # lng(german, english)
+
+# ── Paths (LoxBerry globals) ─────────────────────────────────────────────────────
+my $config_file  = "$lbpconfigdir/pool.cfg";
+my $general_file = "$lbsconfigdir/general.json";
 my $cache_file   = "/tmp/blueconnect_pool.json";
-my $log_file     = "$plugin_dir/../../../data/plugins/blueconnect/blueconnect.log";
-my $script       = "$plugin_dir/../../../bin/plugins/blueconnect/fetch_pool.py";
+my $log_file     = "$lbpdatadir/blueconnect.log";
+my $script       = "$lbpbindir/fetch_pool.py";
 
-# ── Read Miniserver from LoxBerry system settings ────────────────────────────────
+sub esc { my ($s) = @_; $s //= ''; $s =~ s/&/&amp;/g; $s =~ s/</&lt;/g; $s =~ s/>/&gt;/g; return $s; }
+
 sub get_miniserver {
     my ($nr) = @_;
     return ('', '') unless -f $general_file;
@@ -34,10 +40,42 @@ sub get_miniserver {
     return ($ms->{$key}{Ipaddress} // '', $ms->{$key}{Name} // '');
 }
 
-# ── Process action ───────────────────────────────────────────────────────────────
-my $action  = $cgi->param('action') // '';
-my $message = '';
+my $action = $cgi->param('action') // '';
 
+# ── JSON download (must finish before the LoxBerry frame prints anything) ─────────
+if ($action eq 'json' && -f $cache_file) {
+    my $json = read_file($cache_file, binmode => ':raw');
+    print $cgi->header(-type => 'application/json', -charset => 'UTF-8',
+                       -attachment => 'blueconnect.json');
+    print $json;
+    exit;
+}
+
+# ── Language: persist a switch, then resolve (saved > system default) ─────────────
+my $setlang = $cgi->param('setlang') // '';
+if ($setlang eq 'de' || $setlang eq 'en') {
+    my $c = Config::Simple->new(syntax => 'ini');
+    $c->read($config_file) if -f $config_file;
+    $c->param("ui.language", $setlang);
+    $c->save($config_file);
+}
+{
+    my $c = Config::Simple->new(syntax => 'ini');
+    $c->read($config_file) if -f $config_file;
+    my $saved = $c->param("ui.language") // '';
+    if ($saved eq 'de' || $saved eq 'en') {
+        $LANG = $saved;
+    } else {
+        my $sys = 'en';
+        eval { $sys = lc(LoxBerry::System::lblanguage() // 'en'); };
+        $LANG = ($sys =~ /^de/) ? 'de' : 'en';
+    }
+}
+
+my $message = '';
+my $message_err = 0;
+
+# ── Process actions ──────────────────────────────────────────────────────────────
 if ($action eq 'save') {
     my $cfg = Config::Simple->new(syntax => 'ini');
     $cfg->read($config_file) if -f $config_file;
@@ -47,37 +85,37 @@ if ($action eq 'save') {
     my $old_user = $cfg->param("blueconnect.username") // '';
 
     $cfg->param("blueconnect.username", $new_user);
-
     if ($new_pass ne '') {
-        # Store plaintext in password_plain - Python encrypts it on next run
         $cfg->param("blueconnect.password_plain", $new_pass);
         $cfg->param("blueconnect.password_enc",   '');
     }
-
     # On user/password change: clear cached device data -> re-detection
     if ($new_user ne $old_user || $new_pass ne '') {
         $cfg->param("blueconnect.pool_id",     '');
         $cfg->param("blueconnect.pool_name",   '');
         $cfg->param("blueconnect.blue_serial", '');
     }
-
     $cfg->param("loxone.miniserver_port", $cgi->param('ms_port')  // '7777');
     $cfg->param("polling.interval",       $cgi->param('interval') // '300');
     $cfg->save($config_file);
-    $message = 'Settings saved. The password will be encrypted on the next fetch.';
+    $message = lng('Einstellungen gespeichert. Das Passwort wird beim nächsten Abruf verschlüsselt.',
+                   'Settings saved. The password will be encrypted on the next fetch.');
 }
 
 if ($action eq 'fetch') {
     my $out = `python3 "$script" 2>&1`;
-    $message = $? == 0
-        ? 'Data fetched successfully.'
-        : "Fetch error: $out";
+    if ($? == 0) {
+        $message = lng('Daten erfolgreich abgerufen.', 'Data fetched successfully.');
+    } else {
+        $message = lng('Fehler beim Abruf: ', 'Fetch error: ') . $out;
+        $message_err = 1;
+    }
 }
 
 if ($action eq 'clearlog' && -f $log_file) {
     open(my $fh, '>', $log_file) or warn "Could not clear log: $!";
     close $fh;
-    $message = 'Log cleared.';
+    $message = lng('Protokoll geleert.', 'Log cleared.');
 }
 
 # ── Active tab ───────────────────────────────────────────────────────────────────
@@ -88,7 +126,7 @@ $active = 'data'   if $action eq 'fetch';
 my $tabparam = $cgi->param('tab') // '';
 $active = $tabparam if $tabparam =~ /^(data|config|log)$/;
 
-# ── Load config ──────────────────────────────────────────────────────────────────
+# ── Load config (fresh, reflects any save above) ─────────────────────────────────
 my $cfg = Config::Simple->new(syntax => 'ini');
 $cfg->read($config_file) if -f $config_file;
 
@@ -97,26 +135,26 @@ my $pool_name   = $cfg->param("blueconnect.pool_name")      // '';
 my $blue_serial = $cfg->param("blueconnect.blue_serial")    // '';
 my $pw_enc      = $cfg->param("blueconnect.password_enc")   // '';
 my $pw_plain    = $cfg->param("blueconnect.password_plain") // '';
-my $pw_status   = $pw_enc   ? 'Encrypted and stored'
-                : $pw_plain ? 'Pending encryption (run a fetch once)'
-                :             'Not set';
+my $pw_status   = $pw_enc   ? lng('Verschlüsselt gespeichert', 'Encrypted and stored')
+                : $pw_plain ? lng('Wird beim nächsten Abruf verschlüsselt', 'Pending encryption (run a fetch)')
+                :             lng('Nicht gesetzt', 'Not set');
 my $ms_nr       = $cfg->param("loxone.miniserver_nr")   // '';
 my $ms_port     = $cfg->param("loxone.miniserver_port") // '7777';
 my $interval    = $cfg->param("polling.interval")       // '300';
+my $interval_min = int(($interval || 300) / 60);
 
+my $setup_done = ($username ne '' && ($pw_enc ne '' || $pw_plain ne '')) ? 1 : 0;
 my ($ms_ip, $ms_name) = get_miniserver($ms_nr);
 
 # ── Load cache ───────────────────────────────────────────────────────────────────
-my $cache    = {};
-my $values   = {};
-my $last_upd = '';
+my ($cache, $values, $cpool, $cserial, $last_upd) = ({}, {}, '', '', '');
 if (-f $cache_file) {
     eval {
         my $json = read_file($cache_file, binmode => ':utf8');
         $cache   = decode_json($json);
-        $values  = $cache->{values} // {};
-        # Format the timestamp in LoxBerry's local timezone (readable form).
-        # Prefer the epoch value; localtime() uses the system TZ.
+        $values  = $cache->{values}      // {};
+        $cpool   = $cache->{pool}        // '';
+        $cserial = $cache->{blue_serial} // '';
         my $epoch = $values->{last_update_epoch};
         if (defined $epoch && $epoch =~ /^\d+$/) {
             $last_upd = strftime("%d.%m.%Y %H:%M:%S", localtime($epoch));
@@ -126,296 +164,306 @@ if (-f $cache_file) {
     };
 }
 
+# ── Labels / units (language-aware) ──────────────────────────────────────────────
 my %units = (
-    temperature         => ' &deg;C',
-    temperature_current => ' &deg;C',
-    temperature_min     => ' &deg;C',
-    temperature_max     => ' &deg;C',
-    orp                 => ' mV',
-    battery             => ' %',
-    tds                 => ' ppm',
-    fcl                 => ' mg/l',
-    ph                  => '',
-    wind_speed_current  => ' m/s',
+    temperature => ' &deg;C', orp => ' mV', ph => '',
+    temperature_current => ' &deg;C', temperature_min => ' &deg;C',
+    temperature_max => ' &deg;C', wind_speed_current => ' m/s',
 );
 my %labels = (
-    temperature         => 'Water temperature',
-    orp                 => 'ORP (Redox)',
-    ph                  => 'pH value',
-    tds                 => 'TDS',
-    fcl                 => 'Free chlorine',
-    battery             => 'Battery',
-    battery_low         => 'Battery',
-    temperature_current => 'Air temperature',
-    temperature_max     => 'Air temp. max.',
-    temperature_min     => 'Air temp. min.',
-    wind_speed_current  => 'Wind speed',
+    temperature         => lng('Wassertemperatur','Water temperature'),
+    ph                  => lng('pH-Wert','pH value'),
+    orp                 => lng('ORP (Redox)','ORP (Redox)'),
+    battery_low         => lng('Batterie','Battery'),
+    temperature_current => lng('Lufttemperatur','Air temperature'),
+    temperature_max     => lng('Lufttemp. max.','Air temp. max.'),
+    temperature_min     => lng('Lufttemp. min.','Air temp. min.'),
+    wind_speed_current  => lng('Windgeschwindigkeit','Wind speed'),
 );
 
-my @device_keys  = grep { exists $values->{$_} && $_ !~ /ok_min|ok_max|last_update/ }
-                   qw(temperature ph orp tds fcl battery battery_low);
+my @device_keys  = grep { exists $values->{$_} } qw(temperature ph orp battery_low);
 my @weather_keys = grep { exists $values->{$_} }
                    qw(temperature_current temperature_max temperature_min wind_speed_current);
 
-sub value_row {
+# A measurement/status row with a coloured dot + optional OK/Warning pill.
+sub status_row {
     my ($key) = @_;
+    return '' unless exists $values->{$key};
     my $val   = $values->{$key};
-    return '' unless defined $val;
-    my $label  = $labels{$key} // do { (my $l = $key) =~ s/_/ /g; ucfirst $l };
+    my $label = $labels{$key} // do { (my $l = $key) =~ s/_/ /g; ucfirst $l };
+    my ($disp, $pill, $dotcls) = ('', '', 'dot-green');
 
-    # Battery is only available as a low-battery flag (0 = OK, 1 = low).
     if ($key eq 'battery_low') {
-        my $low    = $val ? 1 : 0;
-        my $text   = $low ? 'Low' : 'OK';
-        my $status = $low ? ' status-warn' : ' status-ok';
-        return "<div class='value-card$status'>"
-             . "<span class='vlabel'>$label</span>"
-             . "<span class='vval'>$text</span>"
-             . "</div>\n";
+        my $low = ($val && $val ne '0') ? 1 : 0;
+        $disp   = $low ? lng('Schwach','Low') : 'OK';
+        $pill   = $low ? "<span class='pill pill-warn'>" . lng('Achtung','Warning') . "</span>"
+                       : "<span class='pill pill-ok'>OK</span>";
+        $dotcls = $low ? 'dot-red' : 'dot-green';
+    } else {
+        my $unit   = $units{$key} // '';
+        $disp = "$val$unit";
+        my $ok_min = $values->{"${key}_ok_min"};
+        my $ok_max = $values->{"${key}_ok_max"};
+        if (defined $ok_min && defined $ok_max) {
+            my $ok = ($val >= $ok_min && $val <= $ok_max);
+            $pill   = $ok ? "<span class='pill pill-ok'>OK</span>"
+                          : "<span class='pill pill-warn'>" . lng('Achtung','Warning') . "</span>";
+            $dotcls = $ok ? 'dot-green' : 'dot-red';
+            $disp  .= " <span style='color:#9b9b9b;font-weight:400;font-size:.85em'>($ok_min&ndash;$ok_max$unit)</span>";
+        }
     }
-
-    my $unit   = $units{$key}  // '';
-    my $ok_min = $values->{"${key}_ok_min"};
-    my $ok_max = $values->{"${key}_ok_max"};
-    my $status = '';
-    if (defined $ok_min && defined $ok_max) {
-        $status = ($val < $ok_min || $val > $ok_max) ? ' status-warn' : ' status-ok';
-    }
-    my $range = (defined $ok_min && defined $ok_max)
-        ? "<span class='range'>($ok_min - $ok_max$unit)</span>" : '';
-    return "<div class='value-card$status'>"
-         . "<span class='vlabel'>$label</span>"
-         . "<span class='vval'>$val$unit $range</span>"
-         . "</div>\n";
+    return "<tr><td><span class='dot $dotcls'></span>" . esc($label) . "</td>"
+         . "<td class='tval'>$disp</td><td class='tstat'>$pill</td></tr>\n";
 }
 
-print $cgi->header(-charset => 'UTF-8', -type => 'text/html');
-print <<'HTMLHEAD';
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BlueConnect</title>
-  <link rel="stylesheet" href="/system/htmlauth/css/loxberry.min.css">
-  <style>
-    body{font-family:Arial,sans-serif;max-width:800px;margin:0 auto;padding:16px}
-    h2{color:#1565C0;border-bottom:2px solid #1565C0;padding-bottom:6px}
-    h3{color:#37474F;margin-top:24px}
-    .topbar{display:flex;align-items:center;gap:12px;margin-bottom:8px}
-    .tabs{display:flex;gap:4px;border-bottom:2px solid #1565C0;margin-bottom:16px}
-    .tab{padding:10px 22px;cursor:pointer;border:1px solid #CFD8DC;border-bottom:none;
-      border-radius:6px 6px 0 0;background:#ECEFF1;color:#546E7A;font-weight:bold;
-      font-size:0.95em;margin-bottom:-2px}
-    .tab:hover{background:#E3F2FD}
-    .tab.active{background:#1565C0;color:#fff;border-color:#1565C0}
-    .panel{display:none}
-    .panel.active{display:block}
-    .value-card{background:#F5F5F5;border-left:4px solid #90CAF9;border-radius:6px;
-      padding:10px 16px;margin:6px 0;display:flex;justify-content:space-between;align-items:center}
-    .value-card.status-ok{border-left-color:#66BB6A}
-    .value-card.status-warn{border-left-color:#FFA726}
-    .vlabel{font-weight:bold;color:#37474F}
-    .vval{font-size:1.15em;color:#1565C0}
-    .range{font-size:0.78em;color:#90A4AE;margin-left:6px}
-    .device-info{background:#E3F2FD;border-radius:6px;padding:10px 16px;margin:8px 0;
-      font-size:0.9em;color:#37474F}
-    .device-info span{font-weight:bold;color:#1565C0}
-    .msg-ok{background:#E8F5E9;border:1px solid #A5D6A7;border-radius:6px;
-      padding:10px 16px;margin:12px 0;color:#2E7D32}
-    .msg-err{background:#FFEBEE;border:1px solid #EF9A9A;border-radius:6px;
-      padding:10px 16px;margin:12px 0;color:#C62828}
-    table.cfg{width:100%;border-collapse:collapse}
-    table.cfg td{padding:8px 6px;vertical-align:middle}
-    table.cfg td:first-child{width:200px;font-weight:bold;color:#37474F}
-    table.cfg input[type=text],table.cfg input[type=email],
-    table.cfg input[type=password],table.cfg input[type=number]{
-      width:100%;padding:7px 10px;border:1px solid #CFD8DC;
-      border-radius:4px;font-size:1em;box-sizing:border-box}
-    .btn{background:#1565C0;color:#fff;border:none;border-radius:4px;
-      padding:10px 24px;font-size:1em;cursor:pointer;margin-right:8px;text-decoration:none;
-      display:inline-block}
-    .btn:hover{background:#0D47A1}
-    .btn-sec{background:#546E7A}
-    .btn-sec:hover{background:#37474F}
-    .section{background:#fff;border:1px solid #CFD8DC;border-radius:8px;
-      padding:16px 20px;margin-bottom:20px}
-    .no-data{color:#90A4AE;font-style:italic}
-    .timestamp{color:#90A4AE;font-size:0.82em}
-    .log-box{background:#263238;color:#CFD8DC;font-family:monospace;font-size:0.82em;
-      border-radius:6px;padding:12px 14px;height:360px;min-height:120px;
-      resize:vertical;overflow:auto;white-space:pre-wrap;word-break:break-all}
-    .log-err{color:#EF9A9A;font-weight:bold}
-    .log-warn{color:#FFE082}
-    .log-info{color:#CFD8DC}
-  </style>
-</head>
-<body>
-<div class="topbar">
-  <a href="/admin/index.cgi" class="btn btn-sec">&larr; Back</a>
+# ── Navbar tabs (rendered by lbheader) ───────────────────────────────────────────
+our %navbar;
+$navbar{10}{Name} = lng('Status & Daten','Status & data'); $navbar{10}{URL} = "index.cgi?tab=data";
+$navbar{10}{active} = 1 if $active eq 'data';
+$navbar{20}{Name} = lng('Einstellungen','Settings');       $navbar{20}{URL} = "index.cgi?tab=config";
+$navbar{20}{active} = 1 if $active eq 'config';
+$navbar{30}{Name} = lng('Protokoll','Log');                $navbar{30}{URL} = "index.cgi?tab=log";
+$navbar{30}{active} = 1 if $active eq 'log';
+
+# ── Render ───────────────────────────────────────────────────────────────────────
+LoxBerry::Web::lbheader("BlueConnect V$version",
+    "https://github.com/tesshu12/loxberry-plugin-blueconnect", "help.html", "nojqm");
+
+print <<'STYLE';
+<style>
+  .bc-wrap{max-width:740px;margin:0 auto}
+  .bc-card{background:#fff;border:1px solid #e0e0e0;border-radius:6px;
+    box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;margin-bottom:8px}
+  .bc-head{display:flex;align-items:center;gap:14px;
+    background:linear-gradient(135deg,#1e88e5,#0d47a1);color:#fff;padding:18px 22px}
+  .bc-head .logo{width:50px;height:50px;background:#fff;border-radius:8px;flex:none;
+    display:flex;align-items:center;justify-content:center}
+  .bc-head h1{margin:0;font-size:1.5em;font-weight:700;color:#fff}
+  .bc-head p{margin:2px 0 0;font-size:.85em;opacity:.92}
+  .bc-head .lang{margin-left:auto;font-size:.82em;color:#fff;display:flex;align-items:center;gap:6px}
+  .bc-head .lang select{background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.35);
+    border-radius:4px;padding:5px 8px;font-size:.95em}
+  .bc-head .lang select option{color:#333}
+  .bc-body{padding:18px 22px 22px;color:#333;font-family:"Helvetica Neue",Arial,sans-serif}
+  details{border:1px solid #d9e6ef;border-radius:5px;margin:0 0 12px;background:#eaf4fb}
+  summary{list-style:none;cursor:pointer;padding:11px 14px;font-size:.9em;color:#1565c0;font-weight:600}
+  summary::-webkit-details-marker{display:none}
+  summary::before{content:"\25B6";display:inline-block;margin-right:8px;font-size:.7em;transition:transform .15s}
+  details[open] summary::before{transform:rotate(90deg)}
+  summary .sub{display:block;font-weight:400;color:#5a8fbf;font-size:.92em;margin-top:2px}
+  .det-body{padding:2px 16px 14px;font-size:.88em;color:#444;line-height:1.55}
+  .det-body ol{margin:6px 0 0;padding-left:20px}
+  .det-body code{background:#fff;border:1px solid #ddd;border-radius:3px;padding:1px 5px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:6px 0 22px}
+  @media(max-width:620px){.tiles{grid-template-columns:repeat(2,1fr)}}
+  .tile{background:#f6f6f6;border-left:4px solid #1e88e5;border-radius:0 4px 4px 0;padding:11px 13px;min-height:78px}
+  .tile .tl{font-size:.66em;letter-spacing:.08em;color:#9b9b9b;font-weight:700;text-transform:uppercase}
+  .tile .tv{margin-top:5px;font-size:1.0em;font-weight:700;color:#333;word-break:break-word}
+  h3.sec{font-size:1.05em;color:#333;margin:20px 0 8px}
+  table.data{width:100%;border-collapse:collapse}
+  table.data th{text-align:left;font-size:.66em;letter-spacing:.08em;color:#9b9b9b;font-weight:700;
+    text-transform:uppercase;padding:8px;border-bottom:1px solid #eee}
+  table.data td{padding:11px 8px;border-bottom:1px solid #f0f0f0;font-size:.92em}
+  table.data td.tval{font-weight:600}
+  table.data td.tstat{text-align:right}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:9px;vertical-align:middle}
+  .dot-green{background:#7ac143}.dot-red{background:#e53935}
+  .pill{display:inline-block;padding:3px 11px;border-radius:11px;font-size:.78em;font-weight:600}
+  .pill-ok{background:#e3f2da;color:#3c763d}.pill-warn{background:#fdecea;color:#c0392b}
+  .acts{margin-top:14px}
+  .act{display:block;width:100%;box-sizing:border-box;text-align:center;
+    background:linear-gradient(#fafafa,#eaeaea);border:1px solid #d2d2d2;border-radius:4px;
+    padding:13px;margin-top:10px;color:#333 !important;font-size:.95em;font-weight:600;
+    cursor:pointer;text-decoration:none;font-family:inherit;line-height:1.2}
+  .act:hover{background:linear-gradient(#fff,#e2e2e2);color:#333 !important;text-decoration:none}
+  table.cfg{width:100%;border-collapse:collapse}
+  table.cfg td{padding:8px 4px;vertical-align:middle}
+  table.cfg td:first-child{width:215px;font-weight:600;color:#444}
+  table.cfg input,table.cfg select{width:100%;padding:8px 10px;border:1px solid #d2d2d2;border-radius:4px;font-size:1em}
+  .hint{font-size:.8em;color:#999;margin-top:3px}
+  .btn-save{background:linear-gradient(#1e88e5,#0d47a1);color:#fff !important;border:none;border-radius:4px;
+    padding:11px 26px;font-size:1em;font-weight:600;cursor:pointer;text-shadow:none !important}
+  .btn-save:hover{color:#fff !important;background:linear-gradient(#1976d2,#0b3d8c)}
+  .info{border-radius:5px;padding:10px 14px;margin:6px 0 14px;font-size:.9em}
+  .info-green{background:#eef7e9;border:1px solid #cfe8bf;color:#3c763d}
+  .info-red{background:#fdecea;border:1px solid #f5c6c0;color:#c0392b;white-space:pre-wrap}
+  .info-blue{background:#e8f1fb;border:1px solid #bcd9f3;color:#1565c0}
+  .msg-ok{background:#eef7e9;border:1px solid #cfe8bf;color:#3c763d;border-radius:5px;padding:11px 16px;margin:0 0 14px;font-size:.92em}
+  .msg-err{background:#fdecea;border:1px solid #f5c6c0;color:#c0392b;border-radius:5px;padding:11px 16px;margin:0 0 14px;font-size:.92em;white-space:pre-wrap}
+  .logbox{background:#1e1e1e;color:#d7d7d7;font-family:monospace;font-size:.8em;border-radius:5px;
+    padding:12px 14px;height:340px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .log-err{color:#ef9a9a;font-weight:bold}.log-warn{color:#ffe082}
+</style>
+STYLE
+
+print "<div class='bc-wrap'>\n<div class='bc-card'>\n";
+
+# Blue card header with pool waves + sun logo + language selector
+my $sub  = lng('Pool-Sensordaten (Blue Connect) per UDP an Loxone',
+               'Pool sensor data (Blue Connect) via UDP to Loxone');
+my $lblL = lng('Sprache:', 'Language:');
+my $sel_de = $LANG eq 'de' ? ' selected' : '';
+my $sel_en = $LANG eq 'en' ? ' selected' : '';
+print <<"CARDHEAD";
+<div class="bc-head">
+  <div class="logo">
+    <svg width="40" height="40" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="20" cy="17" r="7" fill="#ffd54f"/>
+      <g fill="none" stroke="#1e88e5" stroke-width="5" stroke-linecap="round">
+        <path d="M6 34 q8 -7 16 0 t16 0 t16 0"/>
+        <path d="M6 46 q8 -7 16 0 t16 0 t16 0"/>
+        <path d="M6 58 q8 -7 16 0 t16 0 t16 0"/>
+      </g>
+    </svg>
+  </div>
+  <div>
+    <h1>BlueConnect</h1>
+    <p>$sub</p>
+  </div>
+  <form method="get" action="index.cgi" class="lang">
+    <input type="hidden" name="tab" value="$active">
+    <label>$lblL</label>
+    <select name="setlang" onchange="this.form.submit()">
+      <option value="de"$sel_de>Deutsch</option>
+      <option value="en"$sel_en>English</option>
+    </select>
+  </form>
 </div>
-<h2>BlueConnect</h2>
-HTMLHEAD
+CARDHEAD
+
+print "<div class='bc-body'>\n";
 
 if ($message) {
-    my $cls = $message =~ /error/i ? 'msg-err' : 'msg-ok';
-    print "<div class='$cls'>$message</div>\n";
+    my $cls = $message_err ? 'msg-err' : 'msg-ok';
+    print "<div class='$cls'>" . esc($message) . "</div>\n";
 }
 
-# ── Tab navigation ───────────────────────────────────────────────────────────────
-sub tab_class { my ($t) = @_; return $active eq $t ? 'tab active' : 'tab'; }
-sub panel_class { my ($t) = @_; return $active eq $t ? 'panel active' : 'panel'; }
+# ── DATA tab ─────────────────────────────────────────────────────────────────────
+if ($active eq 'data') {
 
-print "<div class='tabs'>\n";
-print "  <div class='" . tab_class('data')   . "' data-tab='data'>Data</div>\n";
-print "  <div class='" . tab_class('config') . "' data-tab='config'>Config</div>\n";
-print "  <div class='" . tab_class('log')    . "' data-tab='log'>Log</div>\n";
-print "</div>\n";
-
-# ── Panel: DATA ──────────────────────────────────────────────────────────────────
-print "<div class='" . panel_class('data') . "' id='panel-data'>\n";
-print "<div class='section'>\n<h3>Device status</h3>\n";
-
-if ($blue_serial) {
-    print "<div class='device-info'>Pool: <span>$pool_name</span> &nbsp;|&nbsp; Blue device: <span>$blue_serial</span></div>\n";
-} else {
-    print "<div class='device-info'>Device not detected yet - save your credentials and click <em>Fetch now</em>.</div>\n";
-}
-
-print "<p class='timestamp'>Last update: $last_upd</p>\n" if $last_upd;
-
-if (@device_keys) {
-    print "<h3>Device measurements</h3>\n";
-    print value_row($_) for @device_keys;
-} else {
-    print "<p class='no-data'>No device data yet. Click <em>Fetch now</em>.</p>\n";
-}
-
-if (@weather_keys) {
-    print "<h3>Weather</h3>\n";
-    print value_row($_) for @weather_keys;
-}
-
-print <<'FETCHBTN';
-<form method="post" style="margin-top:16px">
-  <input type="hidden" name="action" value="fetch">
-  <button type="submit" class="btn btn-sec">Fetch now</button>
-</form>
-</div>
-</div>
-FETCHBTN
-
-# ── Panel: CONFIG ────────────────────────────────────────────────────────────────
-print "<div class='" . panel_class('config') . "' id='panel-config'>\n";
-print <<'CFGFORM';
-<div class='section'>
-<h3>Blue Riiot credentials</h3>
-<form method="post">
-  <input type="hidden" name="action" value="save">
-  <table class="cfg">
-CFGFORM
-
-print "    <tr><td>Email address</td>\n";
-print "    <td><input type='email' name='username' value='$username' placeholder='you\@email.com' autocomplete='username'></td></tr>\n";
-print "    <tr><td>Password</td><td>\n";
-print "      <input type='password' name='password' placeholder='Enter password (blank = unchanged)' autocomplete='current-password'>\n";
-print "      <div style='margin-top:4px;font-size:0.82em;color:#546E7A'>Status: $pw_status</div>\n";
-print "    </td></tr>\n";
-
-print <<'CFGMID';
-  </table>
-  <p style="font-size:0.85em;color:#90A4AE">
-    Pool ID and Blue device serial are detected automatically on the first fetch.
-  </p>
-  <h3>Loxone Miniserver</h3>
-CFGMID
-
-if ($ms_ip) {
-    print "  <div class='device-info'>Target Miniserver (from system settings): <span>$ms_name</span> &nbsp;|&nbsp; IP: <span>$ms_ip</span></div>\n";
-} else {
-    print "  <div class='msg-err'>No Miniserver found in LoxBerry system settings. Configure one under Settings &rarr; Miniserver.</div>\n";
-}
-
-print <<'MSMID';
-  <table class="cfg">
-MSMID
-
-print "    <tr><td>UDP port</td><td><input type='number' name='ms_port' value='$ms_port' min='1' max='65535'>\n";
-print "      <span style='font-size:0.85em;color:#90A4AE'>&nbsp;Port of your Loxone Virtual UDP Input</span></td></tr>\n";
-
-print <<'CFGBOT';
-  </table>
-  <h3>Settings</h3>
-  <table class="cfg">
-CFGBOT
-
-print "    <tr><td>Polling interval (sec.)</td><td><input type='number' name='interval' value='$interval' min='60' max='86400'>\n";
-print "      <span style='font-size:0.85em;color:#90A4AE'>&nbsp;The Blue device sends roughly every 72 min.</span></td></tr>\n";
-
-print <<'CFGEND';
-  </table>
-  <div style="margin-top:16px">
-    <button type="submit" class="btn">Save</button>
-  </div>
-</form>
-</div>
-</div>
-CFGEND
-
-# ── Panel: LOG ───────────────────────────────────────────────────────────────────
-print "<div class='" . panel_class('log') . "' id='panel-log'>\n";
-print "<div class='section'>\n<h3>Log</h3>\n";
-
-if (-f $log_file) {
-    my @lines = read_file($log_file, binmode => ':utf8', err_mode => 'quiet');
-    my @tail  = @lines > 80 ? @lines[-80..-1] : @lines;
-    print "<div class='log-box'>";
-    for my $line (reverse @tail) {
-        chomp $line;
-        my $cls = 'log-info';
-        $cls = 'log-err'  if $line =~ /\[ERROR\]|\[CRITICAL\]/i;
-        $cls = 'log-warn' if $line =~ /\[WARNING\]/i;
-        (my $safe = $line) =~ s/</&lt;/g;
-        $safe =~ s/>/&gt;/g;
-        print "<span class='$cls'>$safe</span>\n";
+    if (!$setup_done) {
+        if ($LANG eq 'de') {
+            print <<'SETUP_DE';
+<details>
+  <summary>Erste Einrichtung<span class="sub">Aufklappen für die Schritte in Kurzform</span></summary>
+  <div class="det-body"><ol>
+    <li>Im Tab <b>Einstellungen</b> Blue-Riiot-E-Mail &amp; Passwort eintragen.</li>
+    <li>UDP-Port angeben, <b>Speichern</b>, dann hier auf <b>Jetzt abrufen</b>.</li>
+    <li>Pool und Blue-Gerät werden beim ersten Abruf automatisch erkannt.</li>
+    <li>In Loxone einen <i>Virtuellen UDP-Eingang</i> anlegen, Port = UDP-Port aus den Einstellungen.</li>
+    <li>Pro Wert eine Befehlserkennung anlegen, z.&nbsp;B. <code>temperature=\v</code>,
+        <code>ph=\v</code>, <code>orp=\v</code>.</li>
+  </ol></div>
+</details>
+SETUP_DE
+        } else {
+            print <<'SETUP_EN';
+<details>
+  <summary>First-time setup<span class="sub">Expand for the quick steps</span></summary>
+  <div class="det-body"><ol>
+    <li>On the <b>Settings</b> tab, enter your Blue Riiot email &amp; password.</li>
+    <li>Set the UDP port, <b>Save</b>, then click <b>Fetch now</b> here.</li>
+    <li>Pool and Blue device are detected automatically on the first fetch.</li>
+    <li>In Loxone create a <i>Virtual UDP Input</i>, port = the UDP port from Settings.</li>
+    <li>Add a command recognition per value, e.g. <code>temperature=\v</code>,
+        <code>ph=\v</code>, <code>orp=\v</code>.</li>
+  </ol></div>
+</details>
+SETUP_EN
+        }
     }
+
+    my $dash = '&ndash;';
+    my $pool = $blue_serial
+        ? ($pool_name ? esc($pool_name) : lng('Pool','Pool')) . "<br><span style='font-weight:400;font-size:.82em;color:#888'>" . esc($blue_serial) . "</span>"
+        : ($cpool ? esc($cpool) : lng('Noch nicht erkannt','Not detected yet'));
+    my $upd  = $last_upd ? $last_upd : $dash;
+
+    print "<div class='tiles'>\n";
+    print "  <div class='tile'><div class='tl'>" . lng('Datenquelle','Data source')        . "</div><div class='tv'>Blue Riiot</div></div>\n";
+    print "  <div class='tile'><div class='tl'>" . lng('Pool / Gerät','Pool / device')     . "</div><div class='tv'>$pool</div></div>\n";
+    print "  <div class='tile'><div class='tl'>" . lng('Letztes Update','Last update')      . "</div><div class='tv'>$upd</div></div>\n";
+    print "  <div class='tile'><div class='tl'>" . lng('Abrufintervall','Polling interval') . "</div><div class='tv'>${interval_min} min</div></div>\n";
     print "</div>\n";
-    print <<'LOGBTN';
-<form method="post" style="margin-top:10px">
-  <input type="hidden" name="action" value="clearlog">
-  <button type="submit" class="btn btn-sec" style="font-size:0.85em;padding:6px 14px">Clear log</button>
-</form>
-LOGBTN
-} else {
-    print "<p class='no-data'>No log yet - it is created on the first fetch.</p>\n";
-    print "<p class='no-data' style='font-size:0.82em'>Path: <code>$log_file</code></p>\n";
+
+    if (@device_keys) {
+        print "<h3 class='sec'>" . lng('Messwerte','Measurements') . "</h3>\n";
+        print "<table class='data'>\n<thead><tr><th>" . lng('Kategorie','Category')
+            . "</th><th>" . lng('Wert','Value') . "</th><th style='text-align:right'>"
+            . lng('Status','Status') . "</th></tr></thead>\n<tbody>\n";
+        print status_row($_) for @device_keys;
+        print "</tbody>\n</table>\n";
+    } else {
+        print "<p class='hint'>" . lng(
+            'Noch keine Pooldaten. Im Tab Einstellungen anmelden und unten auf <b>Jetzt abrufen</b> klicken.',
+            'No pool data yet. Sign in on the Settings tab and click <b>Fetch now</b> below.') . "</p>\n";
+    }
+
+    if (@weather_keys) {
+        print "<h3 class='sec'>" . lng('Wetter','Weather') . "</h3>\n<table class='data'><tbody>\n";
+        print status_row($_) for @weather_keys;
+        print "</tbody></table>\n";
+    }
+
+    print "<div class='acts'>\n";
+    print "<form method='post' action='index.cgi'><input type='hidden' name='action' value='fetch'>\n";
+    print "<button type='submit' class='act'>" . lng('Jetzt abrufen','Fetch now') . "</button></form>\n";
+    print "<form method='get' action='index.cgi'><input type='hidden' name='action' value='json'>\n";
+    print "<button type='submit' class='act'>" . lng('JSON herunterladen','Download JSON') . "</button></form>\n";
+    print "</div>\n";
 }
 
-print "</div>\n</div>\n";
+# ── CONFIG tab ───────────────────────────────────────────────────────────────────
+if ($active eq 'config') {
+    print "<form method='post' action='index.cgi'><input type='hidden' name='action' value='save'>\n";
 
-# ── Tab switching script ─────────────────────────────────────────────────────────
-print <<'TABJS';
-<script>
-(function(){
-  var tabs = document.querySelectorAll('.tab');
-  function activate(name){
-    document.querySelectorAll('.tab').forEach(function(t){
-      t.classList.toggle('active', t.dataset.tab === name);
-    });
-    document.querySelectorAll('.panel').forEach(function(p){
-      p.classList.toggle('active', p.id === 'panel-' + name);
-    });
-    if (history.replaceState) {
-      var u = new URL(window.location);
-      u.searchParams.set('tab', name);
-      history.replaceState(null, '', u);
+    print "<h3 class='sec'>" . lng('Blue Riiot Zugangsdaten','Blue Riiot credentials') . "</h3>\n<table class='cfg'>\n";
+    print "<tr><td>" . lng('E-Mail-Adresse','Email address') . "</td><td><input type='email' name='username' value='" . esc($username) . "' placeholder='" . lng('ihr','you') . "\@email.de' autocomplete='username'></td></tr>\n";
+    print "<tr><td>" . lng('Passwort','Password') . "</td><td><input type='password' name='password' placeholder='" . lng('Passwort (leer = unverändert)','Password (blank = unchanged)') . "' autocomplete='current-password'>"
+        . "<div class='hint'>Status: $pw_status</div></td></tr>\n";
+    print "</table>\n";
+    print "<p class='hint'>" . lng('Pool-ID und Blue-Gerät-Serial werden nach dem ersten Abruf automatisch erkannt.',
+                                   'Pool ID and Blue device serial are detected automatically on the first fetch.') . "</p>\n";
+
+    print "<h3 class='sec'>" . lng('Loxone Miniserver','Loxone Miniserver') . "</h3>\n";
+    if ($ms_ip) {
+        print "<div class='info info-green'>" . lng('Ziel-Miniserver (aus Systemeinstellungen):','Target Miniserver (from system settings):') . " <b>" . esc($ms_name) . "</b> &nbsp;|&nbsp; IP: <b>$ms_ip</b></div>\n";
+    } else {
+        print "<div class='info info-red'>" . lng('Kein Miniserver in den LoxBerry-Systemeinstellungen gefunden. Bitte unter Einstellungen &rarr; Miniserver konfigurieren.','No Miniserver found in the LoxBerry system settings. Please configure one under Settings &rarr; Miniserver.') . "</div>\n";
     }
-  }
-  tabs.forEach(function(t){
-    t.addEventListener('click', function(){ activate(t.dataset.tab); });
-  });
-})();
-</script>
-TABJS
+    print "<table class='cfg'>\n";
+    print "<tr><td>" . lng('UDP-Port','UDP port') . "</td><td><input type='number' name='ms_port' value='" . esc($ms_port) . "' min='1' max='65535'><div class='hint'>" . lng('Port Ihres Loxone Virtuellen UDP-Eingangs.','Port of your Loxone Virtual UDP Input.') . "</div></td></tr>\n";
+    print "<tr><td>" . lng('Abrufintervall (Sek.)','Polling interval (sec.)') . "</td><td><input type='number' name='interval' value='" . esc($interval) . "' min='60' max='86400'><div class='hint'>" . lng('Das Blue-Gerät sendet ~alle 72 Min.','The Blue device sends roughly every 72 min.') . "</div></td></tr>\n";
+    print "</table>\n";
+    print "<div style='margin-top:16px'><button type='submit' class='btn-save'>" . lng('Speichern','Save') . "</button></div>\n";
+    print "</form>\n";
+}
 
-print "</body>\n</html>\n";
+# ── LOG tab ──────────────────────────────────────────────────────────────────────
+if ($active eq 'log') {
+    print "<h3 class='sec'>" . lng('Protokoll','Log') . "</h3>\n";
+    if (-f $log_file) {
+        my @lines = read_file($log_file, binmode => ':utf8', err_mode => 'quiet');
+        my @tail  = @lines > 80 ? @lines[-80..-1] : @lines;
+        print "<div class='logbox'>";
+        for my $line (reverse @tail) {
+            chomp $line;
+            my $cls = '';
+            $cls = 'log-err'  if $line =~ /\[ERROR\]|\[CRITICAL\]/i;
+            $cls = 'log-warn' if $line =~ /\[WARNING\]/i;
+            my $safe = esc($line);
+            print $cls ? "<span class='$cls'>$safe</span>\n" : "$safe\n";
+        }
+        print "</div>\n";
+        print "<form method='post' action='index.cgi' style='margin-top:10px'><input type='hidden' name='action' value='clearlog'>\n";
+        print "<button type='submit' class='act' style='width:auto;padding:8px 16px'>" . lng('Protokoll leeren','Clear log') . "</button></form>\n";
+    } else {
+        print "<p class='hint'>" . lng('Noch kein Protokoll &ndash; es wird beim ersten Abruf erstellt.','No log yet &ndash; it is created on the first fetch.')
+            . "<br>" . lng('Pfad:','Path:') . " <code>" . esc($log_file) . "</code></p>\n";
+    }
+}
+
+print "</div>\n</div>\n</div>\n";   # bc-body, bc-card, bc-wrap
+
+LoxBerry::Web::lbfooter();
+exit;
