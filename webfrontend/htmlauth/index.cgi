@@ -147,7 +147,7 @@ my $setup_done = ($username ne '' && ($pw_enc ne '' || $pw_plain ne '')) ? 1 : 0
 my ($ms_ip, $ms_name) = get_miniserver($ms_nr);
 
 # ── Load cache ───────────────────────────────────────────────────────────────────
-my ($cache, $values, $cpool, $cserial, $last_upd) = ({}, {}, '', '', '');
+my ($cache, $values, $cpool, $cserial, $last_upd, $meas_upd) = ({}, {}, '', '', '', '');
 if (-f $cache_file) {
     eval {
         my $json = read_file($cache_file, binmode => ':utf8');
@@ -160,6 +160,11 @@ if (-f $cache_file) {
             $last_upd = strftime("%d.%m.%Y %H:%M:%S", localtime($epoch));
         } else {
             $last_upd = $values->{last_update} // '';
+        }
+        # Time of the last actual measurement (what the app shows as "last updated")
+        my $mepoch = $values->{measurement_epoch};
+        if (defined $mepoch && $mepoch =~ /^\d+$/) {
+            $meas_upd = strftime("%d.%m.%Y %H:%M:%S", localtime($mepoch));
         }
     };
 }
@@ -377,12 +382,12 @@ SETUP_EN
     my $pool = $blue_serial
         ? ($pool_name ? esc($pool_name) : lng('Pool','Pool')) . "<br><span style='font-weight:400;font-size:.82em;color:#888'>" . esc($blue_serial) . "</span>"
         : ($cpool ? esc($cpool) : lng('Noch nicht erkannt','Not detected yet'));
-    my $upd  = $last_upd ? $last_upd : $dash;
+    my $meas = $meas_upd ? $meas_upd : ($last_upd ? $last_upd : $dash);
 
     print "<div class='tiles'>\n";
     print "  <div class='tile'><div class='tl'>" . lng('Datenquelle','Data source')        . "</div><div class='tv'>Blue Riiot</div></div>\n";
     print "  <div class='tile'><div class='tl'>" . lng('Pool / Gerät','Pool / device')     . "</div><div class='tv'>$pool</div></div>\n";
-    print "  <div class='tile'><div class='tl'>" . lng('Letztes Update','Last update')      . "</div><div class='tv'>$upd</div></div>\n";
+    print "  <div class='tile'><div class='tl'>" . lng('Letzte Messung','Last measurement') . "</div><div class='tv'>$meas</div></div>\n";
     print "  <div class='tile'><div class='tl'>" . lng('Abrufintervall','Polling interval') . "</div><div class='tv'>${interval_min} min</div></div>\n";
     print "</div>\n";
 

@@ -291,6 +291,16 @@ def _as_number(val):
     return None
 
 
+def _iso_to_epoch(s):
+    """Parse an ISO-8601 timestamp (e.g. '2026-06-10T09:43:46.000Z') to Unix epoch."""
+    if not s or not isinstance(s, str):
+        return None
+    try:
+        return int(datetime.fromisoformat(s.strip().replace("Z", "+00:00")).timestamp())
+    except Exception:
+        return None
+
+
 def extract_values(measurements: list[dict], weather: dict, device: dict | None = None) -> dict:
     values: dict = {}
 
@@ -357,6 +367,13 @@ def extract_values(measurements: list[dict], weather: dict, device: dict | None 
     if "battery_low" in flag_source:
         values["battery_low"] = 1 if flag_source["battery_low"] else 0
 
+    # 3) Time of the last actual measurement (what the app shows as "last updated").
+    ts = nested.get("last_measure_message") or (device or {}).get("last_measure_message")
+    meas_epoch = _iso_to_epoch(ts)
+    if meas_epoch is not None:
+        values["measurement_epoch"] = meas_epoch  # Unix epoch, e.g. for Loxone
+        values["measurement_time"]  = ts          # raw ISO string (display only)
+
     if weather:
         for key in ("temperature_current", "temperature_min", "temperature_max",
                     "uv_index", "wind_speed_current"):
@@ -411,8 +428,8 @@ def send_udp(values: dict, host: str, port: int) -> None:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         for key, val in values.items():
-            if key in ("last_update", "last_update_epoch"):
-                continue
+            if key in ("last_update", "last_update_epoch", "measurement_time"):
+                continue  # strings / internal helpers, not numeric Loxone values
             sock.sendto(f"{key}={val}\n".encode(), (host, port))
     finally:
         sock.close()
@@ -464,7 +481,7 @@ def main() -> int:
         }
 
         printable = {k: v for k, v in values.items()
-                     if k not in ("last_update", "last_update_epoch")}
+                     if k not in ("last_update", "last_update_epoch", "measurement_time")}
         log.info("Values: %s", printable)
         print(json.dumps(cache_data, indent=2, ensure_ascii=False))
 

@@ -8,10 +8,13 @@ Hersteller-Cloud ab und sendet sie per UDP an deinen Loxone Miniserver.</p>
       werden automatisch erkannt.</li>
   <li>In Loxone einen <i>Virtuellen UDP-Eingang</i> anlegen (Port = UDP-Port aus den Einstellungen)
       und pro Wert eine Befehlserkennung, z.&nbsp;B. <code>temperature=\v</code>,
-      <code>ph=\v</code>, <code>orp=\v</code>, <code>battery_low=\v</code>.</li>
+      <code>ph=\v</code>, <code>orp=\v</code>, <code>battery_low=\v</code>,
+      <code>measurement_epoch=\v</code>.</li>
 </ol>
 <p>Das Gerät misst <b>pH, Wassertemperatur und ORP (Redox)</b> &ndash; kein freies Chlor und kein
-TDS. Die Miniserver-IP wird automatisch aus den LoxBerry-Systemeinstellungen gelesen.</p>
+TDS. <code>measurement_epoch</code> ist der Zeitpunkt der letzten Messung als Unix-Zeitstempel
+(f&uuml;r Loxone ggf. 1230768000 abziehen). Die Miniserver-IP wird automatisch aus den
+LoxBerry-Systemeinstellungen gelesen.</p>
 
 <hr>
 
@@ -25,7 +28,9 @@ vendor cloud and sends them via UDP to your Loxone Miniserver.</p>
       detected automatically.</li>
   <li>In Loxone create a <i>Virtual UDP Input</i> (port = the UDP port from Settings) and add a
       command recognition per value, e.g. <code>temperature=\v</code>, <code>ph=\v</code>,
-      <code>orp=\v</code>, <code>battery_low=\v</code>.</li>
+      <code>orp=\v</code>, <code>battery_low=\v</code>, <code>measurement_epoch=\v</code>.</li>
 </ol>
 <p>The device measures <b>pH, water temperature and ORP (Redox)</b> &ndash; no free chlorine or
-TDS. The Miniserver IP is read automatically from the LoxBerry system settings.</p>
+TDS. <code>measurement_epoch</code> is the time of the last measurement as a Unix timestamp
+(for Loxone subtract 1230768000). The Miniserver IP is read automatically from the LoxBerry
+system settings.</p>

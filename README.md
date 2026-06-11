@@ -43,13 +43,14 @@ In **Loxone Config**:
    recognition* and, optionally, the *unit* (Einheit) for a nicely formatted
    display in Loxone (`\v` is the value placeholder):
 
-   | Value             | Command recognition          | Unit (Einheit) |
-   |-------------------|------------------------------|----------------|
-   | Water temperature | `temperature=\v`             | `<v.1>°C`      |
-   | pH                | `ph=\v`                      | `<v.1>`        |
-   | ORP (Redox)       | `orp=\v`                     | `<v> mV`       |
-   | Battery low flag  | `battery_low=\v`             | `<v>`          |
-   | Air temperature   | `temperature_current=\v`     | `<v.1>°C`      |
+   | Value                 | Command recognition          | Unit (Einheit) |
+   |-----------------------|------------------------------|----------------|
+   | Water temperature     | `temperature=\v`             | `<v.1>°C`      |
+   | pH                    | `ph=\v`                      | `<v.1>`        |
+   | ORP (Redox)           | `orp=\v`                     | `<v> mV`       |
+   | Battery low flag      | `battery_low=\v`             | `<v>`          |
+   | Last measurement time | `measurement_epoch=\v`       | (Unix epoch)   |
+   | Air temperature       | `temperature_current=\v`     | `<v.1>°C`      |
 
    Only values your device actually reports are sent. The Blue Connect device
    measures **pH, water temperature and ORP (Redox)** — it does **not** measure
@@ -62,6 +63,11 @@ In **Loxone Config**:
    The battery is exposed only as a low-battery flag — `battery_low`: `0` =
    **OK**, `1` = **Low** — not as a percentage. Tip: in Loxone you can map the
    `battery_low` input to a status text "OK"/"Low" via its unit/caption.
+
+   **`measurement_epoch`** is the time of the last actual sensor measurement
+   (what the Blue Riiot app shows as "last updated"), as a **Unix timestamp**
+   (seconds since 1970). Loxone counts time from 2009-01-01, so to display it as
+   a real date/time subtract the offset: `measurement_epoch − 1230768000`.
 
 ## Configuration
 
