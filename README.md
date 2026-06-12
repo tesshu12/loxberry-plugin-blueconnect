@@ -49,7 +49,8 @@ In **Loxone Config**:
    | pH                    | `ph=\v`                      | `<v.1>`        |
    | ORP (Redox)           | `orp=\v`                     | `<v> mV`       |
    | Battery low flag      | `battery_low=\v`             | `<v>`          |
-   | Last measurement time | `measurement_epoch=\v`       | (Unix epoch)   |
+   | Last measurement (Unix)   | `measurement_epoch=\v`   | (Unix epoch)   |
+   | Last measurement (Loxone) | `measurement_loxone=\v`  | `<v.u>`        |
    | Air temperature       | `temperature_current=\v`     | `<v.1>°C`      |
 
    Only values your device actually reports are sent. The Blue Connect device
@@ -64,10 +65,15 @@ In **Loxone Config**:
    **OK**, `1` = **Low** — not as a percentage. Tip: in Loxone you can map the
    `battery_low` input to a status text "OK"/"Low" via its unit/caption.
 
-   **`measurement_epoch`** is the time of the last actual sensor measurement
-   (what the Blue Riiot app shows as "last updated"), as a **Unix timestamp**
-   (seconds since 1970). Loxone counts time from 2009-01-01, so to display it as
-   a real date/time subtract the offset: `measurement_epoch − 1230768000`.
+   **Last measurement time** = the time of the last actual sensor measurement
+   (what the Blue Riiot app shows as "last updated"). Two ready-to-use forms:
+   - **`measurement_loxone`** — already in Loxone time (seconds since 2009-01-01),
+     computed in the **LoxBerry system timezone** (incl. DST). Map
+     `measurement_loxone=\v` and set the input's **unit (Einheit)** to `<v.u>`;
+     Loxone then shows the real local date/time directly — no calculation needed.
+     (Make sure your LoxBerry timezone is set correctly — `timedatectl`.)
+   - **`measurement_epoch`** — raw **Unix timestamp** (seconds since 1970). If you
+     use this one instead, subtract the offset yourself: `measurement_epoch − 1230768000`.
 
 ## Configuration
 

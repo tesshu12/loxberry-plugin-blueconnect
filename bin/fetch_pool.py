@@ -371,8 +371,14 @@ def extract_values(measurements: list[dict], weather: dict, device: dict | None 
     ts = nested.get("last_measure_message") or (device or {}).get("last_measure_message")
     meas_epoch = _iso_to_epoch(ts)
     if meas_epoch is not None:
-        values["measurement_epoch"] = meas_epoch  # Unix epoch, e.g. for Loxone
-        values["measurement_time"]  = ts          # raw ISO string (display only)
+        # measurement_loxone = seconds from 2009-01-01 to the measurement, in the
+        # LoxBerry SYSTEM timezone (datetime.fromtimestamp uses the OS tz, incl.
+        # DST). Loxone's <v.u> shows this value directly as local date/time and
+        # applies no offset itself, so it matches the Blue Riiot app.
+        local_dt = datetime.fromtimestamp(meas_epoch)          # LoxBerry local wall-clock
+        values["measurement_epoch"]  = meas_epoch              # Unix epoch (UTC, since 1970)
+        values["measurement_loxone"] = int((local_dt - datetime(2009, 1, 1)).total_seconds())
+        values["measurement_time"]   = ts                      # raw ISO string (display only)
 
     if weather:
         for key in ("temperature_current", "temperature_min", "temperature_max",
