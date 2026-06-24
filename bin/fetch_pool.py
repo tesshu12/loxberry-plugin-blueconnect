@@ -378,6 +378,8 @@ def extract_values(measurements: list[dict], weather: dict, device: dict | None 
         local_dt = datetime.fromtimestamp(meas_epoch)          # LoxBerry local wall-clock
         values["measurement_epoch"]  = meas_epoch              # Unix epoch (UTC, since 1970)
         values["measurement_loxone"] = int((local_dt - datetime(2009, 1, 1)).total_seconds())
+        # Seconds since local midnight -> Loxone unit <v.t> shows just the time.
+        values["measurement_time_of_day"] = local_dt.hour * 3600 + local_dt.minute * 60 + local_dt.second
         values["measurement_time"]   = ts                      # raw ISO string (display only)
 
     if weather:

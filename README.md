@@ -50,6 +50,7 @@ In **Loxone Config**:
    | ORP (Redox)           | `orp=\v`                     | `<v> mV`       |
    | Battery low flag      | `battery_low=\v`             | `<v>`          |
    | Last measurement      | `measurement_loxone=\v`      | `<v.u>`        |
+   | Last measurement (time only) | `measurement_time_of_day=\v` | `<v.t>` |
    | Air temperature       | `temperature_current=\v`     | `<v.1>°C`      |
 
    Only values your device actually reports are sent. The Blue Connect device
@@ -70,7 +71,8 @@ In **Loxone Config**:
    (incl. DST). Map `measurement_loxone=\v` and set the input's **unit (Einheit)**
    to `<v.u>`; Loxone then shows the real local date/time directly — no
    calculation needed. (Make sure your LoxBerry timezone is set correctly —
-   `timedatectl`.)
+   `timedatectl`.) For the **time only**, use `measurement_time_of_day` (seconds
+   since local midnight) with unit `<v.t>` → shows e.g. `21:33:00`.
 
 ## Configuration
 

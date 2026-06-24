@@ -13,8 +13,9 @@ Hersteller-Cloud ab und sendet sie per UDP an deinen Loxone Miniserver.</p>
 </ol>
 <p>Das Gerät misst <b>pH, Wassertemperatur und ORP (Redox)</b> &ndash; kein freies Chlor und kein
 TDS. <code>measurement_loxone</code> ist der Zeitpunkt der letzten Messung in Loxone-Zeit
-(Einheit <code>&lt;v.u&gt;</code> setzen &ndash; zeigt direkt Datum/Uhrzeit). Die Miniserver-IP wird
-automatisch aus den LoxBerry-Systemeinstellungen gelesen.</p>
+(Einheit <code>&lt;v.u&gt;</code> &ndash; Datum/Uhrzeit); <code>measurement_time_of_day</code> mit
+Einheit <code>&lt;v.t&gt;</code> zeigt nur die Uhrzeit. Die Miniserver-IP wird automatisch aus den
+LoxBerry-Systemeinstellungen gelesen.</p>
 
 <hr>
 
@@ -32,5 +33,6 @@ vendor cloud and sends them via UDP to your Loxone Miniserver.</p>
 </ol>
 <p>The device measures <b>pH, water temperature and ORP (Redox)</b> &ndash; no free chlorine or
 <code>measurement_loxone</code> is the time of the last measurement in Loxone time
-(set the unit to <code>&lt;v.u&gt;</code> to show date/time directly). The Miniserver IP is read
-automatically from the LoxBerry system settings.</p>
+(unit <code>&lt;v.u&gt;</code> for date/time); <code>measurement_time_of_day</code> with unit
+<code>&lt;v.t&gt;</code> shows the time only. The Miniserver IP is read automatically from the
+LoxBerry system settings.</p>
