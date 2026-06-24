@@ -11,6 +11,7 @@ use LoxBerry::Web;             # lbheader(), lbfooter()
 use Config::Simple;
 use JSON;
 use File::Slurp;
+use File::Path qw(make_path);
 use POSIX qw(strftime);
 
 my $cgi     = CGI->new;
@@ -25,6 +26,10 @@ my $general_file = "$lbsconfigdir/general.json";
 my $cache_file   = "/tmp/blueconnect_pool.json";
 my $log_file     = "$lbpdatadir/blueconnect.log";
 my $script       = "$lbpbindir/fetch_pool.py";
+
+# The config file is created on first save (not shipped in the archive), so it
+# survives plugin updates. Make sure its directory exists before writing.
+make_path($lbpconfigdir) unless -d $lbpconfigdir;
 
 sub esc { my ($s) = @_; $s //= ''; $s =~ s/&/&amp;/g; $s =~ s/</&lt;/g; $s =~ s/>/&gt;/g; return $s; }
 

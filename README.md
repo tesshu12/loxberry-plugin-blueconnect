@@ -137,8 +137,7 @@ plugin.cfg                       LoxBerry plugin metadata
 dpkg/apt                         apt packages installed on setup
 cron/cron.05min/blueconnect        polling job (honours configured interval)
 bin/fetch_pool.py                main fetcher (API, encryption, UDP)
-config/pool.cfg                  config template (no credentials committed)
-webfrontend/htmlauth/index.cgi   tabbed web UI
+webfrontend/htmlauth/index.cgi   tabbed web UI (creates the config on first save)
 icons/icon_*.png                 plugin icons
 ```
 
